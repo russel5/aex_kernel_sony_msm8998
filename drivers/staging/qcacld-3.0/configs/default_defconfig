@@ -322,14 +322,12 @@ endif
 # builds. Other OEMs are also protected using the TARGET_BUILD_VARIANT
 # config.
 ifneq ($(TARGET_BUILD_VARIANT),user)
-	ifneq ($(TARGET_BUILD_VARIANT),userdebug)
-		ifeq ($(CONFIG_LITHIUM), y)
-			CONFIG_FEATURE_PKTLOG := n
-		else
-			CONFIG_FEATURE_PKTLOG := y
-		endif
-		CONFIG_WLAN_DEBUG_CRASH_INJECT := y
+	ifeq ($(CONFIG_LITHIUM), y)
+		CONFIG_FEATURE_PKTLOG := n
+	else
+		CONFIG_FEATURE_PKTLOG := y
 	endif
+	CONFIG_WLAN_DEBUG_CRASH_INJECT := y
 endif
 
 #Enable WLAN/Power debugfs feature only if debug_fs is enabled
@@ -443,6 +441,10 @@ CONFIG_ATH_SUPPORT_SPECTRAL := n
 ifeq ($(CONFIG_HELIUMPLUS), y)
 CONFIG_WLAN_CUSTOM_DSCP_UP_MAP := y
 CONFIG_WLAN_SEND_DSCP_UP_MAP_TO_FW := y
+endif
+
+ifeq ($(CONFIG_ARCH_BENGAL), y)
+CONFIG_SMMU_S1_UNMAP := y
 endif
 
 #Enable WDI Event support
@@ -651,10 +653,8 @@ CONFIG_WLAN_LOGGING_SOCK_SVC := y
 endif
 
 ifneq ($(TARGET_BUILD_VARIANT),user)
-	ifneq ($(TARGET_BUILD_VARIANT),userdebug)
-		CONFIG_DESC_DUP_DETECT_DEBUG := y
-		CONFIG_DEBUG_RX_RING_BUFFER := y
-	endif
+CONFIG_DESC_DUP_DETECT_DEBUG := y
+CONFIG_DEBUG_RX_RING_BUFFER := y
 endif
 
 CONFIG_DP_TRACE := y
