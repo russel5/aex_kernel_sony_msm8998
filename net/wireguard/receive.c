@@ -57,7 +57,7 @@ static int prepare_skb_header(struct sk_buff *skb, struct wg_device *wg)
 	size_t data_offset, data_len, header_len;
 	struct udphdr *udp;
 
-	if (unlikely(wg_skb_examine_untrusted_ip_hdr(skb) != skb->protocol ||
+	if (unlikely(!wg_check_packet_protocol(skb) ||
 		     skb_transport_header(skb) < skb->head ||
 		     (skb_transport_header(skb) + sizeof(struct udphdr)) >
 			     skb_tail_pointer(skb)))
@@ -119,10 +119,13 @@ static void wg_receive_handshake_packet(struct wg_device *wg,
 
 	under_load = skb_queue_len(&wg->incoming_handshakes) >=
 		     MAX_QUEUED_INCOMING_HANDSHAKES / 8;
-	if (under_load)
+	if (under_load) {
 		last_under_load = ktime_get_coarse_boottime_ns();
-	else if (last_under_load)
+	} else if (last_under_load) {
 		under_load = !wg_birthdate_has_expired(last_under_load, 1);
+		if (!under_load)
+			last_under_load = 0;
+	}
 	mac_state = wg_cookie_validate_packet(&wg->cookie_checker, skb,
 					      under_load);
 	if ((under_load && mac_state == VALID_MAC_WITH_COOKIE) ||
@@ -224,21 +227,20 @@ void wg_packet_handshake_receive_worker(struct work_struct *work)
 static void keep_key_fresh(struct wg_peer *peer)
 {
 	struct noise_keypair *keypair;
-	bool send = false;
+	bool send;
 
 	if (peer->sent_lastminute_handshake)
 		return;
 
 	rcu_read_lock_bh();
 	keypair = rcu_dereference_bh(peer->keypairs.current_keypair);
-	if (likely(keypair && READ_ONCE(keypair->sending.is_valid)) &&
-	    keypair->i_am_the_initiator &&
-	    unlikely(wg_birthdate_has_expired(keypair->sending.birthdate,
-			REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT - REKEY_TIMEOUT)))
-		send = true;
+	send = keypair && READ_ONCE(keypair->sending.is_valid) &&
+	       keypair->i_am_the_initiator &&
+	       wg_birthdate_has_expired(keypair->sending.birthdate,
+			REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT - REKEY_TIMEOUT);
 	rcu_read_unlock_bh();
 
-	if (send) {
+	if (unlikely(send)) {
 		peer->sent_lastminute_handshake = true;
 		wg_packet_send_queued_handshake_initiation(peer, false);
 	}
@@ -389,18 +391,16 @@ static void wg_packet_consume_data_done(struct wg_peer *peer,
 #ifndef COMPAT_CANNOT_USE_CSUM_LEVEL
 	skb->csum_level = ~0; /* All levels */
 #endif
-	skb->protocol = wg_skb_examine_untrusted_ip_hdr(skb);
+	skb->protocol = wg_examine_packet_protocol(skb);
 	if (skb->protocol == htons(ETH_P_IP)) {
 		len = ntohs(ip_hdr(skb)->tot_len);
 		if (unlikely(len < sizeof(struct iphdr)))
 			goto dishonest_packet_size;
-		if (INET_ECN_is_ce(PACKET_CB(skb)->ds))
-			IP_ECN_set_ce(ip_hdr(skb));
+		INET_ECN_decapsulate(skb, PACKET_CB(skb)->ds, ip_hdr(skb)->tos);
 	} else if (skb->protocol == htons(ETH_P_IPV6)) {
 		len = ntohs(ipv6_hdr(skb)->payload_len) +
 		      sizeof(struct ipv6hdr);
-		if (INET_ECN_is_ce(PACKET_CB(skb)->ds))
-			IP6_ECN_set_ce(skb, ipv6_hdr(skb));
+		INET_ECN_decapsulate(skb, PACKET_CB(skb)->ds, ipv6_get_dsfield(ipv6_hdr(skb)));
 	} else {
 		goto dishonest_packet_type;
 	}
@@ -594,8 +594,7 @@ void wg_packet_receive(struct wg_device *wg, struct sk_buff *skb)
 		wg_packet_consume_data(wg, skb);
 		break;
 	default:
-		net_dbg_skb_ratelimited("%s: Invalid packet from %pISpfsc\n",
-					wg->dev->name, skb);
+		WARN(1, "Non-exhaustive parsing of packet header lead to unknown packet type!\n");
 		goto err;
 	}
 	return;
