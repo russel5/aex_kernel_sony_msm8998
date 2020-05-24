@@ -1966,7 +1966,7 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	if (!host->ops->enable_controller_clock && (ios->power_mode &
 						    (MMC_POWER_UP |
 						     MMC_POWER_ON)))
-		sdhci_set_power(host, ios->power_mode, ios->vdd);
+		__sdhci_set_power(host, ios->power_mode, ios->vdd);
 
 	spin_lock_irqsave(&host->lock, flags);
 

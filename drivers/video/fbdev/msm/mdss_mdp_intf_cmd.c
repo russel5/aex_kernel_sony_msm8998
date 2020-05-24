@@ -1241,11 +1241,12 @@ static int mdss_mdp_cmd_intf_callback(void *data, int event)
 			__func__, atomic_read(&ctx->rdptr_cnt), event);
 
 		/*
-		 * if we are going to suspended or pp split is not enabled,
-		 * just return
+		 * if we are going to suspended, just return
 		 */
-		if (ctx->intf_stopped || !is_pingpong_split(ctx->ctl->mfd))
+		if (ctx->intf_stopped) {
+			pr_debug("%s: Intf stopped\n", __func__);
 			return -EINVAL;
+		}
 		atomic_inc(&ctx->rdptr_cnt);
 
 		/* enable clks and rd_ptr interrupt */
@@ -2117,7 +2118,7 @@ static int mdss_mdp_cmd_wait4pingpong(struct mdss_mdp_ctl *ctl, void *arg)
 	struct mdss_mdp_cmd_ctx *ctx;
 	struct mdss_panel_data *pdata;
 	unsigned long flags;
-	int rc = 0, te_irq;
+	int rc = 0;
 #ifdef CONFIG_FB_MSM_MDSS_SPECIFIC_PANEL
 	struct incell_ctrl *incell = incell_get_info();
 	struct mdss_panel_specific_pdata *spec_pdata;
