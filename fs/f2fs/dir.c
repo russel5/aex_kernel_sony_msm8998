@@ -842,7 +842,7 @@ int f2fs_fill_dentries(struct dir_context *ctx, struct f2fs_dentry_ptr *d,
 		}
 
 		if (readdir_ra)
-			f2fs_ra_node_page(sbi, le32_to_cpu(de->ino));
+		bit_pos += GET_DENTRY_SLOTS(le16_to_cpu(de->name_len));
 
 		ctx->pos = start_pos + bit_pos;
 	}
